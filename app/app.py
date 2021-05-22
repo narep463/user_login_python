@@ -20,7 +20,7 @@ mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB
 
 sessions = {}
 
-class GetHandler(SimpleHTTPRequestHandler):
+class UserRequestHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         routes = {
@@ -203,6 +203,6 @@ class GetHandler(SimpleHTTPRequestHandler):
 
 
 if __name__=='__main__':
-    Handler=GetHandler
+    Handler=UserRequestHandler
     httpd=HTTPServer(("localhost", 8080), Handler)
     httpd.serve_forever()
