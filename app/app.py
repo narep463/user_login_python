@@ -24,7 +24,7 @@ class GetHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         routes = {
             "/login": self.login,
-            # "/logout": self.logout,
+            "/logout": self.logout,
             "/signup": self.signup
         }
         # <--- Gets the size of data
@@ -60,11 +60,35 @@ class GetHandler(SimpleHTTPRequestHandler):
         mysqldb_connection.commit()
         cur.close()
         return "User Created Successfully", 200
+    
+    def login(self, post_data):
+        required_fields = ['username', 'password']
+        missing_fields = []
+        for field in required_fields:
+            if not post_data.get(field, None):
+                missing_fields.append(field)
+        if missing_fields:
+            return 'Missing fields - %s ' % (', '.join(missing_fields)), 400
+        username = post_data.get('username', None)
+        password = post_data.get('password', None)
+        #add conditions
+        cur = mysqldb_connection.cursor(buffered=True)
+        cur.execute('SELECT password from login where username="%s"' %username)
+        stored_password = cur.fetchone()[0]
+        passwords_matched = self.verify_password(stored_password, password)
+        if passwords_matched:
+            return "User logged in successfully", 200
+        else:
+            return "Invalid Password", 400
+    
+    def logout(self):
+        #clear session
+        return "Logout Successfully"
 
     def hash_password(self, password):
         """Hash a password for storing."""
         salt = hashlib.sha256(os.urandom(60)).hexdigest().encode('ascii')
-        pwdhash = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), 
+        pwdhash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), 
                                     salt, 100000)
         pwdhash = binascii.hexlify(pwdhash)
         return (salt + pwdhash).decode('ascii')
@@ -73,7 +97,7 @@ class GetHandler(SimpleHTTPRequestHandler):
         """Verify a stored password against one provided by user"""
         salt = stored_password[:64]
         stored_password = stored_password[64:]
-        pwdhash = hashlib.pbkdf2_hmac('sha512', 
+        pwdhash = hashlib.pbkdf2_hmac('sha256', 
                                     provided_password.encode('utf-8'), 
                                     salt.encode('ascii'), 
                                     100000)
