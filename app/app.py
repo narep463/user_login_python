@@ -13,10 +13,12 @@ import os
 import re
 from datetime import datetime, timedelta
 from setup_database import check_and_create_db
-
+from sqlalchemy import create_engine
 check_and_create_db()
 
-mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB_PASSWORD, database=settings.DB_DATABASE, host=settings.DB_HOST, auth_plugin='mysql_native_password')
+# mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB_PASSWORD, database=settings.DB_DATABASE, host=settings.DB_HOST, auth_plugin='mysql_native_password')
+
+mysqldb_connection = create_engine("mysql+mysqldb://%s:%s@%s:3306/%s" % (settings.DB_USER, settings.DB_PASSWORD, settings.DB_HOST, settings.DB_DATABASE), echo=False).connect()
 
 sessions = {}
 
@@ -50,7 +52,7 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
                     username = sessions[self.user]['username']
                     session_validation = self.validate_session_time(self.user)
                     if not session_validation:
-                        cur = mysqldb_connection.cursor(buffered=True)
+                        cur = mysqldb_connection
                         cur.execute('SELECT username, email, phone from %s where username="%s"' % (settings.DB_TABLE, username))
                         user_data = cur.fetchone()
                         data = {"user_name": user_data[0], "email": user_data[1], "phone": user_data[2]}
@@ -118,7 +120,7 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
 
         if not validation_errors:
             password = self.hash_password(password)
-            cur = mysqldb_connection.cursor(buffered=True)
+            cur = mysqldb_connection
             cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
             if cur.fetchone():
                 return "User with username already exists"
@@ -130,7 +132,7 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
         else:
             return str(validation_errors), 400
     
-    def validate_signup(username, password, email, phone):
+    def validate_signup_data(username, password, email, phone):
         errors = []
         if '@' not in email:
             errors.append('Not a valid email')
@@ -153,8 +155,8 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
         username = post_data.get('username', None)
         password = post_data.get('password', None)
         #add conditions
-        cur = mysqldb_connection.cursor(buffered=True)
-        cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
+        cur = mysqldb_connection
+        rs = cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
         try:
             stored_password = cur.fetchone()[0]
         except:
@@ -202,7 +204,7 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
         if cookie_list else {}
 
 
-if __name__=='__main__':
-    Handler=UserRequestHandler
-    httpd=HTTPServer(("localhost", 8080), Handler)
-    httpd.serve_forever()
+print('starting http server')
+Handler=UserRequestHandler
+httpd=HTTPServer(("0.0.0.0", 8080), Handler)
+httpd.serve_forever()

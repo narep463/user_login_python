@@ -1,33 +1,19 @@
 
 import mysql.connector as mysqldb
+from sqlalchemy.sql.expression import false
 import settings
-
+from sqlalchemy import create_engine
 
 
 def check_and_create_db():
-    mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB_PASSWORD, host=settings.DB_HOST, auth_plugin='mysql_native_password')
+    mysqldb_connection = create_engine("mysql+mysqldb://%s:%s@%s:3306/%s" % (settings.DB_USER, settings.DB_PASSWORD, settings.DB_HOST, settings.DB_DATABASE), echo=False).connect()
 
-    mycursor = mysqldb_connection.cursor()
+    mycursor = mysqldb_connection
 
-    mycursor.execute("SHOW DATABASES")
-
-    db_exists = False
-    for db in mycursor:
-        if db[0] == settings.DB_DATABASE:
-            db_exists = True
-
-    if not db_exists:
-        mycursor.execute("CREATE DATABASE %s"%settings.DB_DATABASE)
-
-
-    mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB_PASSWORD, database=settings.DB_DATABASE, host=settings.DB_HOST, auth_plugin='mysql_native_password')
-
-    mycursor = mysqldb_connection.cursor()
-
-    mycursor.execute("SHOW TABLES")
+    rs = mycursor.execute("SHOW TABLES")
 
     table_exists = False
-    for table in mycursor:
+    for table in rs:
         if table[0] == settings.DB_TABLE:
             table_exists = True
 
