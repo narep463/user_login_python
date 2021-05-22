@@ -12,7 +12,9 @@ import binascii
 import os
 import re
 from datetime import datetime, timedelta
+from setup_database import check_and_create_db
 
+check_and_create_db()
 
 mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB_PASSWORD, database=settings.DB_DATABASE, host=settings.DB_HOST, auth_plugin='mysql_native_password')
 
@@ -199,7 +201,8 @@ class GetHandler(SimpleHTTPRequestHandler):
         return dict(((c.split("=")) for c in cookie_list.split(";"))) \
         if cookie_list else {}
 
-Handler=GetHandler
 
-httpd=HTTPServer(("localhost", 8080), Handler)
-httpd.serve_forever()
+if __name__=='__main__':
+    Handler=GetHandler
+    httpd=HTTPServer(("localhost", 8080), Handler)
+    httpd.serve_forever()
