@@ -11,11 +11,13 @@ import hashlib
 import binascii
 import os
 import re
+from datetime import datetime, timedelta
 
 
 mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password='Gopalvenu@113',
                                      database=settings.DB_DATABASE, host='localhost', auth_plugin='mysql_native_password')
 
+sessions = {}
 
 class GetHandler(SimpleHTTPRequestHandler):
 
@@ -23,8 +25,48 @@ class GetHandler(SimpleHTTPRequestHandler):
         routes = {
             "/profile": self.profile
         }
-        self.cookie = None
-        SimpleHTTPRequestHandler.do_GET(self)
+        try:
+            response = 200
+            cookies = self.parse_cookies(self.headers['Cookie'])
+            if "sid" in cookies:
+                self.user = cookies["sid"] if (cookies["sid"] in sessions) else False
+            else:
+                self.user = False
+            content = routes[self.path]()
+        except:
+            response = 404
+            content = "Not Found"
+        self.send_response(response)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(bytes(content, "utf-8"))
+        return
+
+    def profile(self):
+        try:
+            if self.user:
+                if self.user in sessions:
+                    username = sessions[self.user]['username']
+                    session_validation = self.validate_session_time(self.user)
+                    if not session_validation:
+                        cur = mysqldb_connection.cursor(buffered=True)
+                        cur.execute('SELECT username, email, phone from login where username="%s"' %username)
+                        user_data = cur.fetchone()
+                        data = {"user_name": user_data[0], "email": user_data[1], "phone": user_data[2]}
+                        return json.dumps(data)
+                    return session_validation
+            return "Please login to view your profile"
+        except Exception as e:
+            return str(e)
+    
+    def validate_session_time(self, sid):
+        session_time = sessions[sid]['session_time']
+        if datetime.now() - timedelta(minutes=5) > session_time:
+            self.cookie = "sid="
+            del sessions[self.user]
+            return "Session TimedOut, Please log in again to view the profile"
+        return None
+
 
     def do_POST(self):
         routes = {
@@ -32,13 +74,27 @@ class GetHandler(SimpleHTTPRequestHandler):
             "/logout": self.logout,
             "/signup": self.signup
         }
-        # <--- Gets the size of data
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        post_data = json.loads(post_data)
-        content, response = routes[self.path](post_data)
+        try:
+            self.cookie = None
+            cookies = self.parse_cookies(self.headers['Cookie'])
+            if "sid" in cookies:
+                self.user = cookies["sid"] if (cookies["sid"] in sessions) else None
+            else:
+                self.user = None
+            content_length = int(self.headers['Content-Length'])
+            try:
+                post_data = self.rfile.read(content_length)
+                post_data = json.loads(post_data) or {}
+            except:
+                post_data = {}
+            content, response = routes[self.path](post_data)
+        except Exception as e:
+            content = str(e)
+            response = 404
         self.send_response(response)
         self.send_header('Content-type', 'text/html')
+        if self.cookie:
+            self.send_header('Set-Cookie', self.cookie)
         self.end_headers()
 
         self.wfile.write(bytes(content, "utf-8"))
@@ -98,13 +154,22 @@ class GetHandler(SimpleHTTPRequestHandler):
         stored_password = cur.fetchone()[0]
         passwords_matched = self.verify_password(stored_password, password)
         if passwords_matched:
+            sid = self.generate_sid()
+            self.cookie = "sid={}".format(sid)
+            sessions[sid] = {"username": username, "session_time":datetime.now()}
             return "User logged in successfully", 200
         else:
             return "Invalid Password", 400
     
-    def logout(self):
-        #clear session
-        return "Logout Successfully"
+    def generate_sid(self):
+        return "".join(str(randint(1,9)) for _ in range(100))
+    
+    def logout(self, post_data):
+        if not self.user:
+            return "Can't Log Out: No User Logged In", 400
+        self.cookie = "sid="
+        del sessions[self.user]
+        return "Logout Successfully", 200
 
     def hash_password(self, password):
         """Hash a password for storing."""
@@ -124,6 +189,10 @@ class GetHandler(SimpleHTTPRequestHandler):
                                     100000)
         pwdhash = binascii.hexlify(pwdhash).decode('ascii')
         return pwdhash == stored_password
+    
+    def parse_cookies(self, cookie_list):
+        return dict(((c.split("=")) for c in cookie_list.split(";"))) \
+        if cookie_list else {}
 
 Handler=GetHandler
 
