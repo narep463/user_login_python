@@ -14,8 +14,7 @@ import re
 from datetime import datetime, timedelta
 
 
-mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password='Gopalvenu@113',
-                                     database=settings.DB_DATABASE, host='localhost', auth_plugin='mysql_native_password')
+mysqldb_connection = mysqldb.connect(user=settings.DB_USER, password=settings.DB_PASSWORD, database=settings.DB_DATABASE, host=settings.DB_HOST, auth_plugin='mysql_native_password')
 
 sessions = {}
 
@@ -50,7 +49,7 @@ class GetHandler(SimpleHTTPRequestHandler):
                     session_validation = self.validate_session_time(self.user)
                     if not session_validation:
                         cur = mysqldb_connection.cursor(buffered=True)
-                        cur.execute('SELECT username, email, phone from login where username="%s"' %username)
+                        cur.execute('SELECT username, email, phone from %s where username="%s"' % (settings.DB_TABLE, username))
                         user_data = cur.fetchone()
                         data = {"user_name": user_data[0], "email": user_data[1], "phone": user_data[2]}
                         return json.dumps(data)
@@ -61,7 +60,7 @@ class GetHandler(SimpleHTTPRequestHandler):
     
     def validate_session_time(self, sid):
         session_time = sessions[sid]['session_time']
-        if datetime.now() - timedelta(minutes=5) > session_time:
+        if datetime.now() - timedelta(minutes=settings.SESSION_TIMEOUT) > session_time:
             self.cookie = "sid="
             del sessions[self.user]
             return "Session TimedOut, Please log in again to view the profile"
@@ -117,9 +116,12 @@ class GetHandler(SimpleHTTPRequestHandler):
 
         if not validation_errors:
             password = self.hash_password(password)
-            cur = mysqldb_connection.cursor()
-            cur.execute('INSERT INTO login (username, password, email, phone) VALUES ("%s", "%s", "%s", "%s")' % (
-                username, password, email, phone))
+            cur = mysqldb_connection.cursor(buffered=True)
+            cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
+            if cur.fetchone():
+                return "User with username already exists"
+            cur.execute('INSERT INTO %s (username, password, email, phone) VALUES ("%s", "%s", "%s", "%s")' % (
+                settings.DB_TABLE, username, password, email, phone))
             mysqldb_connection.commit()
             cur.close()
             return "User Created Successfully", 200
@@ -150,8 +152,11 @@ class GetHandler(SimpleHTTPRequestHandler):
         password = post_data.get('password', None)
         #add conditions
         cur = mysqldb_connection.cursor(buffered=True)
-        cur.execute('SELECT password from login where username="%s"' %username)
-        stored_password = cur.fetchone()[0]
+        cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
+        try:
+            stored_password = cur.fetchone()[0]
+        except:
+            return "User does not exist", 400
         passwords_matched = self.verify_password(stored_password, password)
         if passwords_matched:
             sid = self.generate_sid()
