@@ -4,7 +4,7 @@
 
 
 ### clone into any virtual environment running on python 3.9.5
-### install mysql and add credentials in settings.py
+### install mysql and add credentials in settings.py, and docker-compose.yaml file
 ### install docker, docker-compose
 ### run in terminal - sudo docker-compose -f docker-compose.yaml down
 ### run in terminal - sudo docker-compose -f docker-compose.yaml up --build -d
