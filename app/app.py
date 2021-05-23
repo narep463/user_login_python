@@ -4,7 +4,6 @@ from mysql.connector import errors
 
 from traitlets.traitlets import validate
 import settings
-import mysql.connector as mysqldb
 from random import randint
 import json
 import hashlib
@@ -36,7 +35,7 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
             else:
                 self.user = False
             content = routes[self.path]()
-        except:
+        except Exception as e:
             response = 404
             content = "Not Found"
         self.send_response(response)
@@ -53,8 +52,8 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
                     session_validation = self.validate_session_time(self.user)
                     if not session_validation:
                         cur = mysqldb_connection
-                        cur.execute('SELECT username, email, phone from %s where username="%s"' % (settings.DB_TABLE, username))
-                        user_data = cur.fetchone()
+                        rs = cur.execute('SELECT username, email, phone from %s where username="%s"' % (settings.DB_TABLE, username))
+                        user_data = rs.first()
                         data = {"user_name": user_data[0], "email": user_data[1], "phone": user_data[2]}
                         return json.dumps(data)
                     return session_validation
@@ -88,7 +87,7 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
             try:
                 post_data = self.rfile.read(content_length)
                 post_data = json.loads(post_data) or {}
-            except:
+            except Exception as e:
                 post_data = {}
             content, response = routes[self.path](post_data)
         except Exception as e:
@@ -117,28 +116,25 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
         phone = post_data.get('phone', None)
 
         validation_errors = self.validate_signup_data(username, password, email, phone)
-
         if not validation_errors:
             password = self.hash_password(password)
             cur = mysqldb_connection
-            cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
-            if cur.fetchone():
-                return "User with username already exists"
+            rs = cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
+            if rs.first():
+                return "User with username already exists", 200
             cur.execute('INSERT INTO %s (username, password, email, phone) VALUES ("%s", "%s", "%s", "%s")' % (
                 settings.DB_TABLE, username, password, email, phone))
-            mysqldb_connection.commit()
-            cur.close()
             return "User Created Successfully", 200
         else:
             return str(validation_errors), 400
     
-    def validate_signup_data(username, password, email, phone):
+    def validate_signup_data(self, username, password, email, phone):
         errors = []
         if '@' not in email:
             errors.append('Not a valid email')
         if len(username) > 8:
             errors.append('Length of username must not exceed 8 characters')
-        if not re.match("^(?=.*[a-zA-Z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!#%*?&]{1,6}$", password):
+        if not re.match("^(?=.*[a-zA-Z])(?=.*\d)(?=.*[#_-])[A-Za-z\d#_-]{1,6}$", password):
             errors.append('Password should contain one letter, one number, any of these [_, -, #] symbols, and must not exceed 6 characters')
         if not re.match("^(?:(?:\+|0{0,2})91(\s*[\-]\s*)?|[0]?)?[6789]\d{9}$", phone):
             errors.append('Not a valid phone number')
@@ -154,14 +150,12 @@ class UserRequestHandler(SimpleHTTPRequestHandler):
             return 'Missing fields - %s ' % (', '.join(missing_fields)), 400
         username = post_data.get('username', None)
         password = post_data.get('password', None)
-        #add conditions
         cur = mysqldb_connection
         rs = cur.execute('SELECT password from %s where username="%s"' %(settings.DB_TABLE, username))
-        try:
-            stored_password = cur.fetchone()[0]
-        except:
+        stored_password = rs.first()
+        if not stored_password:
             return "User does not exist", 400
-        passwords_matched = self.verify_password(stored_password, password)
+        passwords_matched = self.verify_password(stored_password[0], password)
         if passwords_matched:
             sid = self.generate_sid()
             self.cookie = "sid={}".format(sid)
