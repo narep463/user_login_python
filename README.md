@@ -7,4 +7,6 @@
 ### install mysql and add credentials in settings.py
 ### install docker, docker-compose
 ### run in terminal - sudo docker-compose -f docker-compose.yaml down
-### run in terminal - sudo docker-compose -f docker-compose.yaml up --build
+### run in terminal - sudo docker-compose -f docker-compose.yaml up --build -d
+
+### use postman collection stored to access and check requests
